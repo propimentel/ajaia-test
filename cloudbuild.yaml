@@ -2,21 +2,24 @@
 # Used by `gcloud builds submit --config=cloudbuild.yaml .` in the
 # GitHub Actions deploy job. The Dockerfile lives in apps/backend/ and
 # builds both apps, so we point the docker step at it explicitly.
+#
+# Note: Cloud Build does NOT recursively expand predefined substitutions
+# (like ${PROJECT_ID} / ${SHORT_SHA}) when they appear inside a
+# user-defined substitution (${_VAR}). Keep predefined vars inline.
 
 steps:
   - name: gcr.io/cloud-builders/docker
     args:
       - build
-      - --tag=${_IMAGE}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/ajaia-images/ajaia-app:${SHORT_SHA}
       - --file=apps/backend/Dockerfile
       - .
 
 images:
-  - ${_IMAGE}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/ajaia-images/ajaia-app:${SHORT_SHA}
 
 substitutions:
-  # ${PROJECT_ID} and ${SHORT_SHA} are provided by gcloud builds submit.
-  _IMAGE: us-east1-docker.pkg.dev/${PROJECT_ID}/ajaia-images/ajaia-app:${SHORT_SHA}
+  _REGION: us-east1
 
 options:
   logging: CLOUD_LOGGING_ONLY

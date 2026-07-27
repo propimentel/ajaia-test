@@ -76,6 +76,7 @@ jobs:
         run: |
           gcloud builds submit \
             --config cloudbuild.yaml \
+            --substitutions=_REGION=${{ env.GCP_REGION }} \
             .
 
       - name: Run Prisma migrations against the live database
