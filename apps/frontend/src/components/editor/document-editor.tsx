@@ -93,12 +93,12 @@ export function DocumentEditor({
   }, [editor, onChange]);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       <Plate editor={editor} onChange={handleChange}>
         {!readOnly && <FixedToolbar />}
         <div className="relative w-full cursor-text rounded-md border bg-background ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
           <PlateContent
-            className="outline-none px-3 py-2 min-h-[160px]"
+            className="outline-none px-6 py-6 min-h-[300px] text-base leading-relaxed [&_h1]:mt-0 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2"
             placeholder="Start writing…"
           />
         </div>

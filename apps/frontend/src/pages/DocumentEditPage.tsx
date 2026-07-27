@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { DocumentEditor } from '@/components/editor/document-editor';
-import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+const AUTOSAVE_DELAY_MS = 1500;
 
 export function DocumentEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,9 +21,10 @@ export function DocumentEditPage() {
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const lastSaved = useRef<{ title: string; content: string } | null>(null);
-
-  const debouncedTitle = useDebouncedValue(title, 1500);
-  const debouncedContent = useDebouncedValue(content, 1500);
+  const titleRef = useRef(title);
+  const contentRef = useRef(content);
+  titleRef.current = title;
+  contentRef.current = content;
 
   useEffect(() => {
     if (!id) return;
@@ -55,8 +57,9 @@ export function DocumentEditPage() {
       setSaveState('saving');
       try {
         const updated = await api.update(id, next);
-        setDoc(updated);
+        if (!lastSaved.current) return;
         lastSaved.current = { title: updated.title, content: updated.content };
+        setDoc(updated);
         setSaveState('saved');
       } catch (err) {
         setSaveState('error');
@@ -67,15 +70,43 @@ export function DocumentEditPage() {
     [id],
   );
 
+  // Single shared debounce: any change to title or content resets the timer.
+  // After AUTOSAVE_DELAY_MS of no changes, we PATCH only the fields that
+  // actually differ from the last saved snapshot. This is what makes the save
+  // stable on initial load: the title and content debounces fire together at
+  // the same instant, so the autosave effect never sees a transient
+  // (debouncedContent === '' while lastSaved.content === '# Real Test...').
   useEffect(() => {
     if (!lastSaved.current) return;
-    const next: { title?: string; content?: string } = {};
-    if (debouncedTitle !== lastSaved.current.title) next.title = debouncedTitle;
-    if (debouncedContent !== lastSaved.current.content) next.content = debouncedContent;
-    if (Object.keys(next).length > 0) {
-      void persist(next);
-    }
-  }, [debouncedTitle, debouncedContent, persist]);
+    const last = lastSaved.current;
+    const handle = setTimeout(() => {
+      const next: { title?: string; content?: string } = {};
+      if (title !== last.title) next.title = title;
+      if (content !== last.content) next.content = content;
+      if (Object.keys(next).length > 0) {
+        void persist(next);
+      }
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(handle);
+  }, [title, content, persist]);
+
+  // Flush pending changes when the route unmounts. Without this, a user that
+  // types and clicks "Back" inside the debounce window loses the edit (and
+  // worse, used to wipe the saved content to '').
+  useEffect(() => {
+    return () => {
+      const last = lastSaved.current;
+      if (!last || !id) return;
+      const next: { title?: string; content?: string } = {};
+      if (titleRef.current !== last.title) next.title = titleRef.current;
+      if (contentRef.current !== last.content) next.content = contentRef.current;
+      if (Object.keys(next).length > 0) {
+        void api.update(id, next).catch(() => {
+          // swallow on unmount; user already navigated away
+        });
+      }
+    };
+  }, [id]);
 
   if (loading) {
     return (
@@ -123,7 +154,7 @@ export function DocumentEditPage() {
         onChange={(e) => setTitle(e.target.value)}
         name="title"
         placeholder="Untitled"
-        className="mb-2 h-auto border-none px-0 text-3xl font-bold shadow-none focus-visible:ring-0"
+        className="mb-2 h-auto border-none px-0 py-2 text-3xl font-bold shadow-none focus-visible:ring-0"
         aria-label="Document title"
       />
       <Separator className="mb-4" />
