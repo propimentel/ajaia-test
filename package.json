@@ -1,0 +1,33 @@
+{
+  "name": "ajaia",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ajaia — document editor full-stack app (Turborepo + Nest.js + Vite/React/Plate.js).",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @ajaia/backend prisma migrate dev",
+    "db:deploy": "pnpm --filter @ajaia/backend prisma migrate deploy",
+    "db:studio": "pnpm --filter @ajaia/backend prisma studio",
+    "db:generate": "pnpm --filter @ajaia/backend prisma generate"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.3",
+    "turbo": "^2.1.1",
+    "typescript": "^5.5.3"
+  }
+}

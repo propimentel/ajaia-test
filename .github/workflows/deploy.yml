@@ -1,0 +1,144 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GCP_REGION: us-east2
+  SERVICE_BACKEND: ajaia-backend
+  SERVICE_FRONTEND: ajaia-frontend
+
+jobs:
+  build:
+    name: Lint, typecheck, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm turbo lint
+
+      - name: Typecheck
+        run: pnpm turbo typecheck
+
+      - name: Build
+        run: pnpm turbo build
+
+  deploy-backend:
+    name: Deploy backend
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build backend image
+        run: |
+          gcloud builds submit \
+            --tag "${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}" \
+            --file apps/backend/Dockerfile \
+            .
+
+      - name: Deploy backend to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_BACKEND }} \
+            --region=${{ env.GCP_REGION }} \
+            --image="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}" \
+            --set-secrets=DATABASE_URL=ajaia-supabase-db-url:latest,FRONTEND_URL=ajaia-backend-frontend-url:latest \
+            --no-allow-unauthenticated \
+            --port=8080 \
+            --quiet
+
+      - name: Capture backend URL
+        id: backend
+        run: |
+          BACKEND_URL=$(gcloud run services describe ${{ env.SERVICE_BACKEND }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          echo "url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Run Prisma migrations
+        run: |
+          export DATABASE_URL=$(gcloud secrets versions access latest --secret=ajaia-supabase-db-url)
+          pnpm --filter @ajaia/shared build
+          pnpm --filter @ajaia/backend exec prisma migrate deploy
+
+      - name: Expose backend URL for downstream jobs
+        run: echo "BACKEND_URL=${{ steps.backend.outputs.url }}" >> "$GITHUB_ENV"
+
+  deploy-frontend:
+    name: Deploy frontend
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build frontend image
+        run: |
+          gcloud builds submit \
+            --tag "${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_FRONTEND }}:${{ github.sha }}" \
+            --file apps/frontend/Dockerfile \
+            .
+
+      - name: Deploy frontend to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_FRONTEND }} \
+            --region=${{ env.GCP_REGION }} \
+            --image="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_FRONTEND }}:${{ github.sha }}" \
+            --allow-unauthenticated \
+            --port=8080 \
+            --set-env-vars=BACKEND_URL=${{ env.BACKEND_URL }} \
+            --quiet
