@@ -7,8 +7,7 @@ on:
 
 env:
   GCP_REGION: us-east1
-  SERVICE_BACKEND: ajaia-backend
-  SERVICE_FRONTEND: ajaia-frontend
+  SERVICE_APP: ajaia-app
   RUNTIME_SA: ajaia-ci@ajaia-test.iam.gserviceaccount.com
 
 jobs:
@@ -39,8 +38,8 @@ jobs:
       - name: Build
         run: pnpm turbo build
 
-  deploy-backend:
-    name: Deploy backend
+  deploy:
+    name: Deploy
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -73,75 +72,46 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: Build backend image
+      - name: Build app image (backend + frontend in one container)
         run: |
           gcloud builds submit \
-            --tag "${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}" \
+            --tag "${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_APP }}:${{ github.sha }}" \
             --file apps/backend/Dockerfile \
             .
 
-      - name: Deploy backend to Cloud Run
-        run: |
-          gcloud run deploy ${{ env.SERVICE_BACKEND }} \
-            --region=${{ env.GCP_REGION }} \
-            --image="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}" \
-            --set-secrets=DATABASE_URL=ajaia-supabase-db-url:latest,FRONTEND_URL=ajaia-backend-frontend-url:latest \
-            --allow-unauthenticated \
-            --service-account=${{ env.RUNTIME_SA }} \
-            --port=8080 \
-            --quiet
-
-      - name: Capture backend URL
-        id: backend
-        run: |
-          BACKEND_URL=$(gcloud run services describe ${{ env.SERVICE_BACKEND }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
-          echo "url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
-
-      - name: Run Prisma migrations
+      - name: Run Prisma migrations against the live database
         run: |
           export DATABASE_URL=$(gcloud secrets versions access latest --secret=ajaia-supabase-db-url)
           pnpm --filter @ajaia/shared build
           pnpm --filter @ajaia/backend exec prisma migrate deploy
 
-      - name: Expose backend URL for downstream jobs
-        run: echo "BACKEND_URL=${{ steps.backend.outputs.url }}" >> "$GITHUB_ENV"
-
-  deploy-frontend:
-    name: Deploy frontend
-    needs: deploy-backend
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Build frontend image
+      - name: Deploy to Cloud Run
         run: |
-          gcloud builds submit \
-            --tag "${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_FRONTEND }}:${{ github.sha }}" \
-            --file apps/frontend/Dockerfile \
-            .
-
-      - name: Deploy frontend to Cloud Run
-        run: |
-          gcloud run deploy ${{ env.SERVICE_FRONTEND }} \
+          gcloud run deploy ${{ env.SERVICE_APP }} \
             --region=${{ env.GCP_REGION }} \
-            --image="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_FRONTEND }}:${{ github.sha }}" \
+            --image="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_APP }}:${{ github.sha }}" \
+            --set-secrets=DATABASE_URL=ajaia-supabase-db-url:latest \
             --allow-unauthenticated \
             --service-account=${{ env.RUNTIME_SA }} \
             --port=8080 \
-            --set-env-vars=BACKEND_URL=${{ env.BACKEND_URL }} \
+            --max-instances=1 \
             --quiet
+
+      - name: Capture app URL
+        id: app
+        run: |
+          APP_URL=$(gcloud run services describe ${{ env.SERVICE_APP }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          echo "url=$APP_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed: $APP_URL"
+
+      - name: Clean up legacy services (ajaia-backend, ajaia-frontend)
+        if: always()
+        run: |
+          for service in ajaia-backend ajaia-frontend; do
+            if gcloud run services describe "$service" --region=${{ env.GCP_REGION }} >/dev/null 2>&1; then
+              echo "Deleting legacy service: $service"
+              gcloud run services delete "$service" --region=${{ env.GCP_REGION }} --quiet
+            else
+              echo "Legacy service not present, skipping: $service"
+            fi
+          done
