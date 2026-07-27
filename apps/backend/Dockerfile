@@ -36,7 +36,7 @@ FROM backend-deps AS backend-build
 COPY packages/shared ./packages/shared
 COPY apps/backend ./apps/backend
 RUN pnpm --filter @ajaia/shared build
-RUN pnpm --filter @ajaia/backend exec prisma generate --schema=apps/backend/prisma/schema.prisma
+RUN pnpm --filter @ajaia/backend exec prisma generate --schema=prisma/schema.prisma
 RUN pnpm --filter @ajaia/backend build
 RUN pnpm deploy --filter @ajaia/backend --prod /prod/backend
 
