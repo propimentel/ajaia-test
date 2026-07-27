@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Document as PrismaDocument } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import type { CreateDocumentDto, DocumentDto, DocumentMeta, UpdateDocumentDto } from '@ajaia/shared';
+import type {
+  CreateDocumentDto,
+  DocumentDto,
+  DocumentMeta,
+  UpdateDocumentDto,
+} from '@ajaia/shared';
 
 @Injectable()
 export class DocumentsService {

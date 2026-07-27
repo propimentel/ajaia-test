@@ -21,7 +21,7 @@
     "db:migrate": "pnpm --filter @ajaia/backend prisma migrate dev",
     "db:deploy": "pnpm --filter @ajaia/backend prisma migrate deploy",
     "db:studio": "pnpm --filter @ajaia/backend prisma studio",
-    "db:generate": "pnpm --filter @ajaia/backend prisma generate"
+    "db:generate": "pnpm --filter @ajaia/backend exec prisma generate"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",

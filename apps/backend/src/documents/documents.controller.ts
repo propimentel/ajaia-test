@@ -10,7 +10,12 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import type { CreateDocumentDto, DocumentDto, DocumentMeta, UpdateDocumentDto } from '@ajaia/shared';
+import type {
+  CreateDocumentDto,
+  DocumentDto,
+  DocumentMeta,
+  UpdateDocumentDto,
+} from '@ajaia/shared';
 import { DocumentsService } from './documents.service';
 
 @Controller('documents')
