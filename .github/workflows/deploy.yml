@@ -75,8 +75,7 @@ jobs:
       - name: Build app image (backend + frontend in one container)
         run: |
           gcloud builds submit \
-            --tag "${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_APP }}:${{ github.sha }}" \
-            --file apps/backend/Dockerfile \
+            --config cloudbuild.yaml \
             .
 
       - name: Run Prisma migrations against the live database

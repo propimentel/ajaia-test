@@ -1,0 +1,22 @@
+# Cloud Build config for the combined backend + frontend image.
+# Used by `gcloud builds submit --config=cloudbuild.yaml .` in the
+# GitHub Actions deploy job. The Dockerfile lives in apps/backend/ and
+# builds both apps, so we point the docker step at it explicitly.
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag=${_IMAGE}
+      - --file=apps/backend/Dockerfile
+      - .
+
+images:
+  - ${_IMAGE}
+
+substitutions:
+  # ${PROJECT_ID} and ${SHORT_SHA} are provided by gcloud builds submit.
+  _IMAGE: us-east1-docker.pkg.dev/${PROJECT_ID}/ajaia-images/ajaia-app:${SHORT_SHA}
+
+options:
+  logging: CLOUD_LOGGING_ONLY
