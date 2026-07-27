@@ -55,56 +55,25 @@ RUN pnpm --filter @ajaia/frontend build
 ############################
 # Runtime: backend + static SPA, single container
 #
-# We do NOT use `pnpm deploy` to copy prod-only deps because pnpm's
-# deploy layout does not reliably include the generated Prisma client
-# files (.prisma/client/), which makes @prisma/client throw
-# "@prisma/client did not initialize yet" on boot. Instead, the
-# runtime stage installs the prod deps itself and re-runs
-# `prisma generate` so the client is always present next to the
-# compiled code.
+# Copy the entire workspace from the backend-build stage. This
+# includes node_modules (with the generated Prisma client), the
+# compiled dist, and the prisma schema. We intentionally avoid
+# reinstalling deps here because pnpm's filtered/ignore-scripts
+# installs don't reliably link the prisma CLI bin, and pnpm deploy
+# drops the generated .prisma/client files.
 ############################
 FROM node:20-slim AS runtime
 ENV NODE_ENV=production
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
 ENV PORT=8080
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /repo
-
-# Workspace metadata for a prod-only install of the backend.
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* .npmrc* ./
-COPY --from=backend-build /repo/apps/backend/package.json ./apps/backend/
-COPY --from=backend-build /repo/packages/shared/package.json ./packages/shared/
-# The backend depends on the shared package as `workspace:*`; for
-# pnpm to install it without a built dist, provide the built shared
-# package alongside the install (the `exports`/`main` point at the
-# dist files we are about to copy).
-COPY --from=backend-build /repo/packages/shared/dist ./packages/shared/dist
-COPY --from=backend-build /repo/packages/shared/package.json ./packages/shared/package.json
-
-# We do NOT use --prod here because the prisma CLI is a devDependency
-# of @ajaia/backend and we need it to run `prisma generate` in the
-# next step. The extra bloat is small and Node won't import dev deps
-# at runtime.
-
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --filter @ajaia/backend... --frozen-lockfile=false --ignore-scripts
-
-# Backend build output (dist + prisma schema).
-COPY --from=backend-build /repo/apps/backend/dist ./apps/backend/dist
-COPY --from=backend-build /repo/apps/backend/prisma ./apps/backend/prisma
-
-# Generate the Prisma client in this stage so it's present in
-# node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client and
-# @prisma/client can initialize on boot.
-WORKDIR /repo/apps/backend
-RUN pnpm exec prisma generate --schema=prisma/schema.prisma
+# Full workspace from backend-build: node_modules (with generated
+# Prisma client), dist, prisma schema, shared package dist.
+COPY --from=backend-build /repo /repo
 
 # Frontend dist (served at the root by NestJS via @nestjs/serve-static).
 COPY --from=frontend-build /repo/apps/frontend/dist /app/public
