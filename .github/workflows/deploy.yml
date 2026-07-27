@@ -6,9 +6,10 @@ on:
   workflow_dispatch:
 
 env:
-  GCP_REGION: us-east2
+  GCP_REGION: us-east1
   SERVICE_BACKEND: ajaia-backend
   SERVICE_FRONTEND: ajaia-frontend
+  RUNTIME_SA: ajaia-ci@ajaia-test.iam.gserviceaccount.com
 
 jobs:
   build:
@@ -85,7 +86,8 @@ jobs:
             --region=${{ env.GCP_REGION }} \
             --image="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_BACKEND }}:${{ github.sha }}" \
             --set-secrets=DATABASE_URL=ajaia-supabase-db-url:latest,FRONTEND_URL=ajaia-backend-frontend-url:latest \
-            --no-allow-unauthenticated \
+            --allow-unauthenticated \
+            --service-account=${{ env.RUNTIME_SA }} \
             --port=8080 \
             --quiet
 
@@ -139,6 +141,7 @@ jobs:
             --region=${{ env.GCP_REGION }} \
             --image="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REGISTRY }}/${{ env.SERVICE_FRONTEND }}:${{ github.sha }}" \
             --allow-unauthenticated \
+            --service-account=${{ env.RUNTIME_SA }} \
             --port=8080 \
             --set-env-vars=BACKEND_URL=${{ env.BACKEND_URL }} \
             --quiet
