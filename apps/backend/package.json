@@ -5,6 +5,9 @@
   "description": "Ajaia REST API — Nest.js + Prisma + Postgres.",
   "main": "dist/main.js",
   "scripts": {
+    "postinstall": "prisma generate",
+    "prebuild": "prisma generate",
+    "pretypecheck": "prisma generate",
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
