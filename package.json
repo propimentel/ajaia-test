@@ -18,7 +18,7 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "db:migrate": "pnpm --filter @ajaia/backend prisma migrate dev",
+    "db:migrate": "pnpm --filter @ajaia/backend exec prisma migrate dev",
     "db:deploy": "pnpm --filter @ajaia/backend prisma migrate deploy",
     "db:studio": "pnpm --filter @ajaia/backend prisma studio",
     "db:generate": "pnpm --filter @ajaia/backend exec prisma generate"
