@@ -23,13 +23,6 @@ export default defineConfig({
     sourcemap: true,
   },
   optimizeDeps: {
-    include: [
-      'react',
-      'react-dom',
-      'slate',
-      'slate-react',
-      'slate-history',
-      'platejs',
-    ],
+    include: ['react', 'react-dom', 'platejs'],
   },
 });
