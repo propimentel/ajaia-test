@@ -37,6 +37,9 @@ Supabase as the managed database, and runnable locally with Docker.
 ajaia/
 ├─ apps/
 │  ├─ backend/    # Nest.js + Prisma REST API
+│  │  └─ prisma/
+│  │     ├─ schema.prisma           # Document model + userId (source of truth)
+│  │     └─ migrations/             # committed; applied via prisma migrate deploy
 │  └─ frontend/   # Vite + React + Tailwind + Shadcn + Plate.js
 ├─ packages/
 │  └─ shared/     # Shared TypeScript DTOs (@ajaia/shared)
@@ -60,33 +63,34 @@ ajaia/
 
 ### First-time setup (required before the first `pnpm dev`)
 
-The repo does **not** ship a `pnpm-lock.yaml` or a Prisma migration. Run these
-once after cloning:
+The repo ships a `pnpm-lock.yaml` and the initial Prisma migration, so a
+fresh clone only needs install + env + database bootstrap:
 
 ```bash
-# 1. Install dependencies and generate the lockfile
+# 1. Install dependencies (uses the committed lockfile)
 pnpm install
 
-# 2. Start Postgres
+# 2. Copy env files
+cp apps/backend/.env.example apps/backend/.env
+cp apps/frontend/.env.example apps/frontend/.env   # optional — the dev default works
+
+# 3. Start Postgres
 pnpm db:up
 
-# 3. Create the initial Prisma migration
-pnpm db:migrate --name init
-
-# 4. Commit the lockfile and the migration (apps/backend/prisma/migrations/)
+# 4. Apply the committed migration
+pnpm db:deploy
 ```
 
-After that, subsequent dev sessions only need `pnpm db:up && pnpm dev`.
+Subsequent dev sessions only need `pnpm db:up && pnpm dev`.
 
 ### Quickstart (day-to-day)
 
 ```bash
-# 1. Start Postgres
+# 1. Start Postgres (if not already running)
 pnpm db:up
 
-# 2. Copy env files
+# 2. Make sure the local .env exists (only needed once per clone)
 cp apps/backend/.env.example apps/backend/.env
-cp apps/frontend/.env.example apps/frontend/.env
 
 # 3. Start dev servers (backend on :3001, frontend on :5173)
 pnpm dev
@@ -105,10 +109,12 @@ configured via `VITE_API_URL` (default `http://localhost:3001`).
 | `pnpm typecheck` | Runs `tsc --noEmit` in every workspace. |
 | `pnpm test` | Runs unit tests (Vitest / Jest). |
 | `pnpm db:up` / `pnpm db:down` | Starts/stops the local Postgres container. |
-| `pnpm db:migrate` | Runs Prisma migrations in dev mode. |
-| `pnpm db:deploy` | Runs `prisma migrate deploy` (used in CI). |
+| `pnpm db:migrate` | Runs `prisma migrate dev` (apply + create new migrations). |
+| `pnpm db:deploy` | Runs `prisma migrate deploy` (apply committed migrations — used in CI and after a fresh clone). |
 | `pnpm db:studio` | Opens Prisma Studio. |
-| `pnpm format` | Runs Prettier. |
+| `pnpm db:generate` | Regenerates the Prisma client. |
+| `pnpm format` | Runs Prettier in write mode. |
+| `pnpm format:check` | Runs Prettier in check mode (CI-friendly). |
 
 ## API
 
@@ -161,9 +167,10 @@ in place, the new auth flow can:
 |---|---|---|---|---|
 | `DATABASE_URL` | backend | yes | — | Postgres connection string. |
 | `PORT` | backend | no | `3001` (local) / `8080` (container) | HTTP port. |
-| `FRONTEND_URL` | backend | yes | `http://localhost:5173` | CORS allow-list. |
-| `VITE_API_URL` | frontend (build-time) | no | `http://localhost:3001` | API base URL. Use `/api` to go through nginx. |
-| `BACKEND_URL` | frontend container | no | `http://localhost:3001` | Runtime env var used by nginx to proxy `/api/*`. |
+| `FRONTEND_URL` | backend | no | `http://localhost:5173` | CORS allow-list origin. |
+| `VITE_API_URL` | frontend (dev) | no | `http://localhost:3001` | API base URL the dev server talks to. |
+| `VITE_API_URL` | frontend (build) | no | `/api` | API base URL baked into the prod bundle; resolved at container startup through nginx. |
+| `BACKEND_URL` | frontend container | no | `http://localhost:3001` | Runtime env var used by nginx to proxy `/api/*` and `/health`. |
 
 `.env.example` files are committed in each app directory; copy them to `.env`
 locally. Real secrets are **never** committed.
@@ -215,13 +222,20 @@ frontend to Cloud Run in `us-east2`.
 
 ## Risk notes
 
-- **Plate.js major versions**: Plate and its peer packages move fast. We pin
-  them in `apps/frontend/package.json`; upgrade intentionally and run the
-  full Phase D manual test before merging.
-- **Slate list/heading edge cases**: validate bullet/ordered list + heading
-  interactions locally before shipping a Plate upgrade.
+- **Plate.js v53**: the editor is on `platejs@^53.0.0` with the v53 plugin
+  and toolbar API. Plate and its peer packages move fast; the version
+  range in `apps/frontend/package.json` is pinned intentionally. When
+  bumping, exercise create / edit / autosave / doc-switch / list / heading
+  interactions before shipping.
+- **Slate is transitive**: the editor does not import `slate`, `slate-react`
+  or `slate-history` directly. Don't re-add them as direct dependencies
+  without checking what v53 exposes from `platejs`.
 - **Supabase role permissions**: migrations need `USAGE` and `CREATE` on the
   `public` schema. See `docs/GCP_SUPABASE.md`.
+- **Anonymous identity is per-browser**: clearing site data, switching
+  browser, or using a private window produces a new UUID and a fresh
+  document set. The same UUID in two tabs/devices sees the same docs;
+  two different UUIDs do not.
 
 ## See also
 
