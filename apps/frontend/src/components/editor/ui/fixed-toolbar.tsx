@@ -10,7 +10,7 @@ import {
   ListIcon,
   ListOrderedIcon,
 } from 'lucide-react';
-import { useEditorRef } from 'platejs/react';
+import { useEditorRef, useEditorSelector } from 'platejs/react';
 import {
   Toolbar,
   ToolbarButton,
@@ -26,20 +26,6 @@ import { cn } from '@/lib/utils';
 
 type MarkName = 'bold' | 'italic' | 'underline';
 
-interface EditorApi {
-  hasMark: (mark: string) => boolean;
-  isElementType: (node: unknown, type: string) => boolean;
-  node: () => [unknown] | undefined;
-}
-
-interface EditorTf {
-  [key: string]: { toggle?: () => void } | undefined;
-}
-
-function asEditor(e: ReturnType<typeof useEditorRef>) {
-  return e as unknown as { api: EditorApi; tf: EditorTf };
-}
-
 function MarkButton({
   tooltip,
   mark,
@@ -49,12 +35,22 @@ function MarkButton({
   mark: MarkName;
   children: React.ReactNode;
 }) {
-  const editor = asEditor(useEditorRef());
-  const isActive = editor.api.hasMark(mark);
+  const editor = useEditorRef();
+  const isActive = useEditorSelector(
+    (e) => {
+      const marks = e.api.marks();
+      return Array.isArray(marks) ? marks.includes(mark) : false;
+    },
+    [mark],
+  );
 
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    editor.tf[mark]?.toggle?.();
+    if (isActive) {
+      editor.tf.removeMarks(mark);
+    } else {
+      editor.tf.addMark(mark, true);
+    }
   };
 
   return (
@@ -79,14 +75,19 @@ function HeadingButton({
   level: 1 | 2;
   children: React.ReactNode;
 }) {
-  const editor = asEditor(useEditorRef());
-  const node = editor.api.node();
+  const editor = useEditorRef();
   const type = `h${level}`;
-  const isActive = node ? editor.api.isElementType(node[0], type) : false;
+  const isActive = useEditorSelector(
+    (e) => e.api.some({ match: { type } }),
+    [type],
+  );
 
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    editor.tf[type]?.toggle?.();
+    editor.tf.setNodes(
+      { type },
+      { match: (n) => editor.api.isBlock(n) },
+    );
   };
 
   return (
@@ -113,12 +114,13 @@ function ListButton({
 }) {
   const state = useListToolbarButtonState({ nodeType });
   const { props } = useListToolbarButton(state);
+  const { pressed, ...buttonProps } = props;
 
   return (
     <ToolbarButton
-      {...props}
-      data-state={props.pressed ? 'on' : 'off'}
-      className={cn(props.pressed && 'bg-accent text-accent-foreground')}
+      {...buttonProps}
+      data-state={pressed ? 'on' : 'off'}
+      className={cn(pressed && 'bg-accent text-accent-foreground')}
       title={tooltip}
       type="button"
     >

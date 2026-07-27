@@ -121,6 +121,7 @@ export function DocumentEditPage() {
       <Input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
+        name="title"
         placeholder="Untitled"
         className="mb-2 h-auto border-none px-0 text-3xl font-bold shadow-none focus-visible:ring-0"
         aria-label="Document title"
