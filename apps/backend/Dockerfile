@@ -33,6 +33,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # Build backend
 ############################
 FROM backend-deps AS backend-build
+COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY apps/backend ./apps/backend
 RUN pnpm --filter @ajaia/shared build
@@ -46,6 +47,7 @@ RUN pnpm deploy --filter @ajaia/backend --prod /prod/backend
 FROM frontend-deps AS frontend-build
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL
+COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY apps/frontend ./apps/frontend
 RUN pnpm --filter @ajaia/shared build
