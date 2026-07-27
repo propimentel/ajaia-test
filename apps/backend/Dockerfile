@@ -88,8 +88,13 @@ COPY --from=backend-build /repo/packages/shared/package.json ./packages/shared/
 COPY --from=backend-build /repo/packages/shared/dist ./packages/shared/dist
 COPY --from=backend-build /repo/packages/shared/package.json ./packages/shared/package.json
 
+# We do NOT use --prod here because the prisma CLI is a devDependency
+# of @ajaia/backend and we need it to run `prisma generate` in the
+# next step. The extra bloat is small and Node won't import dev deps
+# at runtime.
+
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --filter @ajaia/backend... --prod --frozen-lockfile=false --ignore-scripts
+    pnpm install --filter @ajaia/backend... --frozen-lockfile=false --ignore-scripts
 
 # Backend build output (dist + prisma schema).
 COPY --from=backend-build /repo/apps/backend/dist ./apps/backend/dist
