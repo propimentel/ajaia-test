@@ -2,8 +2,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from '@/components/ui/sonner';
+import { getOrCreateAnonUserId } from '@/lib/anon-user';
 import { App } from './App';
 import './index.css';
+
+getOrCreateAnonUserId();
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {

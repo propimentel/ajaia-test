@@ -12,25 +12,27 @@ import type {
 export class DocumentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(): Promise<DocumentMeta[]> {
+  async list(userId: string): Promise<DocumentMeta[]> {
     const docs = await this.prisma.document.findMany({
+      where: { userId },
       orderBy: { updatedAt: 'desc' },
       select: { id: true, title: true, updatedAt: true },
     });
     return docs.map((d) => this.toMeta(d));
   }
 
-  async findOne(id: string): Promise<DocumentDto> {
-    const doc = await this.prisma.document.findUnique({ where: { id } });
+  async findOne(userId: string, id: string): Promise<DocumentDto> {
+    const doc = await this.prisma.document.findFirst({ where: { id, userId } });
     if (!doc) {
       throw new NotFoundException(`Document ${id} not found`);
     }
     return this.toDto(doc);
   }
 
-  async create(input: CreateDocumentDto): Promise<DocumentDto> {
+  async create(userId: string, input: CreateDocumentDto): Promise<DocumentDto> {
     const doc = await this.prisma.document.create({
       data: {
+        userId,
         title: input.title ?? 'Untitled',
         content: input.content ?? '',
       },
@@ -38,10 +40,10 @@ export class DocumentsService {
     return this.toDto(doc);
   }
 
-  async update(id: string, input: UpdateDocumentDto): Promise<DocumentDto> {
+  async update(userId: string, id: string, input: UpdateDocumentDto): Promise<DocumentDto> {
     try {
       const doc = await this.prisma.document.update({
-        where: { id },
+        where: { id, userId },
         data: {
           ...(input.title !== undefined ? { title: input.title } : {}),
           ...(input.content !== undefined ? { content: input.content } : {}),
@@ -56,14 +58,12 @@ export class DocumentsService {
     }
   }
 
-  async remove(id: string): Promise<void> {
-    try {
-      await this.prisma.document.delete({ where: { id } });
-    } catch (err) {
-      if (this.isPrismaNotFound(err)) {
-        throw new NotFoundException(`Document ${id} not found`);
-      }
-      throw err;
+  async remove(userId: string, id: string): Promise<void> {
+    const { count } = await this.prisma.document.deleteMany({
+      where: { id, userId },
+    });
+    if (count === 0) {
+      throw new NotFoundException(`Document ${id} not found`);
     }
   }
 

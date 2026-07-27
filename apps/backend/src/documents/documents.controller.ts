@@ -17,38 +17,46 @@ import type {
   UpdateDocumentDto,
 } from '@ajaia/shared';
 import { DocumentsService } from './documents.service';
+import { CurrentUserId } from './current-user.decorator';
 
 @Controller('documents')
 export class DocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
   @Get()
-  list(): Promise<DocumentMeta[]> {
-    return this.documents.list();
+  list(@CurrentUserId() userId: string): Promise<DocumentMeta[]> {
+    return this.documents.list(userId);
   }
 
   @Get(':id')
-  findOne(@Param('id', new ParseUUIDPipe()) id: string): Promise<DocumentDto> {
-    return this.documents.findOne(id);
+  findOne(
+    @CurrentUserId() userId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<DocumentDto> {
+    return this.documents.findOne(userId, id);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() body: CreateDocumentDto): Promise<DocumentDto> {
-    return this.documents.create(body);
+  create(@CurrentUserId() userId: string, @Body() body: CreateDocumentDto): Promise<DocumentDto> {
+    return this.documents.create(userId, body);
   }
 
   @Patch(':id')
   update(
+    @CurrentUserId() userId: string,
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: UpdateDocumentDto,
   ): Promise<DocumentDto> {
-    return this.documents.update(id, body);
+    return this.documents.update(userId, id, body);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
-    return this.documents.remove(id);
+  remove(
+    @CurrentUserId() userId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    return this.documents.remove(userId, id);
   }
 }

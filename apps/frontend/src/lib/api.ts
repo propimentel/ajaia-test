@@ -4,11 +4,9 @@ import type {
   DocumentMeta,
   UpdateDocumentDto,
 } from '@ajaia/shared';
+import { anonUserHeaders } from '@/lib/anon-user';
 
 const rawApiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
-// If VITE_API_URL is a relative path (e.g. "/api"), leave it as-is so the browser
-// sends requests to the same origin and nginx (or the dev proxy) can route them.
-// Otherwise, strip the trailing slash from the absolute URL.
 const API_BASE = rawApiUrl.startsWith('/') ? rawApiUrl : rawApiUrl.replace(/\/$/, '');
 
 class ApiError extends Error {
@@ -27,6 +25,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...anonUserHeaders(),
       ...(init.headers ?? {}),
     },
   });

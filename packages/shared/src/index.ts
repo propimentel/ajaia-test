@@ -18,3 +18,5 @@ export interface UpdateDocumentDto {
   title?: string;
   content?: string;
 }
+
+export const USER_ID_HEADER = 'X-User-Id';

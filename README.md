@@ -123,7 +123,37 @@ The backend exposes a tiny REST API under `/documents`:
 | `DELETE` | `/documents/:id`     | — | `204 No Content` |
 | `GET`    | `/health`            | — | `{ status, db, uptime, timestamp }` |
 
+Every `/documents` request must include the `X-User-Id` header (a UUID). The
+backend returns `400 Bad Request` if the header is missing or not a valid
+UUID, and `404 Not Found` for documents that exist but belong to a different
+user (no enumeration via 403/404 distinction).
+
 The exact request/response types live in [`packages/shared`](./packages/shared).
+
+## Anonymous users
+
+Visitors do not need to log in. On first visit the frontend generates a
+random UUID and stores it in `localStorage` under `ajaia:anonUserId`. The
+frontend then sends it on every API request via the `X-User-Id` header,
+and the backend uses it to scope all document reads/writes to that user.
+
+The anonymous UUID is **stable for the lifetime of the browser storage**:
+clearing site data (or using a different browser/device) produces a new
+identity and a fresh document set.
+
+### Future: linking an anonymous user to a real account
+
+The header-based design is intentional. When real auth is added, the
+controller's source of the user id will switch from the `X-User-Id` header
+to `req.user.id` decoded from a JWT — the service code (and the schema's
+`Document.userId` column) stay the same. To upgrade an anonymous session
+in place, the new auth flow can:
+
+1. Read `ajaia:anonUserId` from `localStorage` (if present) before login.
+2. POST it to an `/auth/migrate` endpoint along with the new credentials
+   or signup payload; the server reassigns any documents owned by that
+   UUID to the newly-created real user.
+3. Remove the localStorage key on success.
 
 ## Environment variables
 
