@@ -39,7 +39,6 @@ COPY apps/backend ./apps/backend
 RUN pnpm --filter @ajaia/shared build
 RUN pnpm --filter @ajaia/backend exec prisma generate --schema=prisma/schema.prisma
 RUN pnpm --filter @ajaia/backend build
-RUN pnpm deploy --filter @ajaia/backend --prod /prod/backend
 
 ############################
 # Build frontend (with /api so the SPA calls the same-origin backend)
@@ -55,24 +54,56 @@ RUN pnpm --filter @ajaia/frontend build
 
 ############################
 # Runtime: backend + static SPA, single container
+#
+# We do NOT use `pnpm deploy` to copy prod-only deps because pnpm's
+# deploy layout does not reliably include the generated Prisma client
+# files (.prisma/client/), which makes @prisma/client throw
+# "@prisma/client did not initialize yet" on boot. Instead, the
+# runtime stage installs the prod deps itself and re-runs
+# `prisma generate` so the client is always present next to the
+# compiled code.
 ############################
 FROM node:20-slim AS runtime
 ENV NODE_ENV=production
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 ENV PORT=8080
-WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Backend (prod-only deps, built dist, prisma client + schema)
-COPY --from=backend-build /prod/backend /app
-COPY --from=backend-build /repo/apps/backend/prisma ./prisma
+WORKDIR /repo
 
-# Frontend dist (served at the root by NestJS via @nestjs/serve-static)
+# Workspace metadata for a prod-only install of the backend.
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* .npmrc* ./
+COPY --from=backend-build /repo/apps/backend/package.json ./apps/backend/
+COPY --from=backend-build /repo/packages/shared/package.json ./packages/shared/
+# The backend depends on the shared package as `workspace:*`; for
+# pnpm to install it without a built dist, provide the built shared
+# package alongside the install (the `exports`/`main` point at the
+# dist files we are about to copy).
+COPY --from=backend-build /repo/packages/shared/dist ./packages/shared/dist
+COPY --from=backend-build /repo/packages/shared/package.json ./packages/shared/package.json
+
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --filter @ajaia/backend... --prod --frozen-lockfile=false --ignore-scripts
+
+# Backend build output (dist + prisma schema).
+COPY --from=backend-build /repo/apps/backend/dist ./apps/backend/dist
+COPY --from=backend-build /repo/apps/backend/prisma ./apps/backend/prisma
+
+# Generate the Prisma client in this stage so it's present in
+# node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client and
+# @prisma/client can initialize on boot.
+WORKDIR /repo/apps/backend
+RUN pnpm exec prisma generate --schema=prisma/schema.prisma
+
+# Frontend dist (served at the root by NestJS via @nestjs/serve-static).
 COPY --from=frontend-build /repo/apps/frontend/dist /app/public
 
+WORKDIR /repo/apps/backend
 EXPOSE 8080
-
 CMD ["node", "dist/main.js"]
